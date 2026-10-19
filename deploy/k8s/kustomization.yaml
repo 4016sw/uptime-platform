@@ -1,0 +1,50 @@
+# Apply everything with:  kubectl apply -k deploy/k8s
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: uptime
+
+labels:
+  - pairs:
+      app.kubernetes.io/part-of: uptime-platform
+    includeSelectors: false
+
+resources:
+  - namespace.yaml
+  - postgres.yaml
+  - rabbitmq.yaml
+  - migrate-job.yaml
+  - api.yaml
+  - worker.yaml
+  - alerter.yaml
+  - scheduler-cronjob.yaml
+  - ingress.yaml
+
+# Non-secret settings. Kustomize appends a content hash to the name
+# (uptime-config-<hash>) and rewrites every reference to it, so changing a
+# value here rolls out new pods automatically.
+configMapGenerator:
+  - name: uptime-config
+    literals:
+      - DB_HOST=postgres
+      - DB_PORT=5432
+      - DB_NAME=uptime
+      - DB_USER=uptime
+      - RABBITMQ_HOST=rabbitmq
+      - RABBITMQ_PORT=5672
+      - RABBITMQ_USER=uptime
+      - CHECK_TIMEOUT_SECONDS=10
+      - LOG_LEVEL=INFO
+
+# Secrets come from deploy/k8s/secrets.env, which is gitignored.
+# Copy secrets.env.example to secrets.env and fill it in first.
+secretGenerator:
+  - name: uptime-secrets
+    envs:
+      - secrets.env
+
+# All app containers use the image "uptime-platform"; the tag is set here in
+# one place. Phase 2's pipeline will update it to the Git commit SHA.
+images:
+  - name: uptime-platform
+    newTag: dev

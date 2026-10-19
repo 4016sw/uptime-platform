@@ -1,0 +1,59 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: uptime-alerter
+  labels:
+    app.kubernetes.io/name: alerter
+spec:
+  # One replica: with several, each status change is still delivered to only
+  # one consumer, but one is enough for this volume.
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: alerter
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: alerter
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        runAsGroup: 10001
+        seccompProfile: {type: RuntimeDefault}
+      initContainers:
+        - name: wait-for-rabbitmq
+          image: uptime-platform
+          command: ["python", "-m", "uptime.wait_for", "rabbitmq:5672"]
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: {drop: ["ALL"]}
+      containers:
+        - name: alerter
+          image: uptime-platform
+          command: ["python", "-m", "uptime.alerter.main"]
+          envFrom:
+            - configMapRef: {name: uptime-config}
+          # Least privilege: only the alerter gets the Telegram token, and it
+          # doesn't get the database password because it never uses it.
+          env:
+            - name: RABBITMQ_PASSWORD
+              valueFrom:
+                secretKeyRef: {name: uptime-secrets, key: RABBITMQ_PASSWORD}
+            - name: TELEGRAM_BOT_TOKEN
+              valueFrom:
+                secretKeyRef: {name: uptime-secrets, key: TELEGRAM_BOT_TOKEN, optional: true}
+            - name: TELEGRAM_CHAT_ID
+              valueFrom:
+                secretKeyRef: {name: uptime-secrets, key: TELEGRAM_CHAT_ID, optional: true}
+          securityContext: {allowPrivilegeEscalation: false, readOnlyRootFilesystem: true, capabilities: {drop: ["ALL"]}}
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+          resources:
+            requests: {cpu: 25m, memory: 96Mi}
+            limits: {memory: 192Mi}
+      volumes:
+        - name: tmp
+          emptyDir: {}

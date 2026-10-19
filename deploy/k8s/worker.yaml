@@ -1,0 +1,60 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: uptime-worker
+  labels:
+    app.kubernetes.io/name: worker
+spec:
+  # No "replicas" field on purpose: with the KEDA addon, an autoscaler owns
+  # the replica count. If replicas were set here, every "kubectl apply"
+  # would reset it and fight the autoscaler. Without KEDA it defaults to 1;
+  # scale by hand with: kubectl scale deployment uptime-worker --replicas=3 -n uptime
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: worker
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: worker
+    spec:
+      # On SIGTERM the worker finishes its current check (max 10s timeout)
+      # before exiting, so 30s is plenty.
+      terminationGracePeriodSeconds: 30
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        runAsGroup: 10001
+        seccompProfile: {type: RuntimeDefault}
+      initContainers:
+        - name: wait-for-dependencies
+          image: uptime-platform
+          command: ["python", "-m", "uptime.wait_for", "postgres:5432", "rabbitmq:5672"]
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: {drop: ["ALL"]}
+      containers:
+        - name: worker
+          image: uptime-platform
+          command: ["python", "-m", "uptime.worker.main"]
+          envFrom:
+            - configMapRef: {name: uptime-config}
+          env:
+            - name: DB_PASSWORD
+              valueFrom:
+                secretKeyRef: {name: uptime-secrets, key: POSTGRES_PASSWORD}
+            - name: RABBITMQ_PASSWORD
+              valueFrom:
+                secretKeyRef: {name: uptime-secrets, key: RABBITMQ_PASSWORD}
+          securityContext: {allowPrivilegeEscalation: false, readOnlyRootFilesystem: true, capabilities: {drop: ["ALL"]}}
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+          # No HTTP endpoint yet, so no liveness probe. Phase 4 adds a
+          # /metrics endpoint that a probe can use.
+          resources:
+            requests: {cpu: 50m, memory: 128Mi}
+            limits: {memory: 256Mi}
+      volumes:
+        - name: tmp
+          emptyDir: {}

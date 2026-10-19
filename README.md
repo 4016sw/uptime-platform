@@ -86,6 +86,10 @@ docker compose up -d --scale worker=3
 2. Send any message to your new bot, then get your chat ID (e.g. from **@userinfobot**).
 3. Put both in `.env` and run `docker compose up -d alerter`.
 
+## Run it on Kubernetes
+
+See **[deploy/k8s/README.md](deploy/k8s/README.md)** for running the platform on minikube with StatefulSets, a CronJob scheduler, probes, Ingress and optional KEDA autoscaling.
+
 ## Tests
 
 ```bash
@@ -120,7 +124,7 @@ pytest
 | Phase | Scope | Status |
 |---|---|---|
 | 0 | Application + Docker Compose | ✅ |
-| 1 | Kubernetes: Deployments, StatefulSets for PostgreSQL/RabbitMQ, CronJob, probes, resource limits, Ingress, KEDA autoscaling | ⏳ |
+| 1 | Kubernetes: Deployments, StatefulSets for PostgreSQL/RabbitMQ, CronJob, probes, resource limits, Ingress, KEDA autoscaling ([guide](deploy/k8s/README.md)) | ✅ |
 | 2 | CI/CD with GitHub Actions: tests, image build, Trivy scan, SHA-tagged images | ⏳ |
 | 3 | Helm chart + GitOps with Argo CD | ⏳ |
 | 4 | Observability: Prometheus metrics, Grafana dashboards, Alertmanager, SLOs | ⏳ |

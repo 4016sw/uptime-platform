@@ -1,0 +1,101 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: uptime-api
+  labels:
+    app.kubernetes.io/name: api
+spec:
+  replicas: 2
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 0  # never drop below the current number of ready pods
+      maxSurge: 1        # add one new pod at a time
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: api
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: api
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        runAsGroup: 10001
+        seccompProfile: {type: RuntimeDefault}
+      initContainers:
+        - name: wait-for-postgres
+          image: uptime-platform
+          command: ["python", "-m", "uptime.wait_for", "postgres:5432"]
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: {drop: ["ALL"]}
+      containers:
+        - name: api
+          image: uptime-platform
+          ports:
+            - name: http
+              containerPort: 8000
+          envFrom:
+            - configMapRef: {name: uptime-config}
+          env:
+            - name: DB_PASSWORD
+              valueFrom:
+                secretKeyRef: {name: uptime-secrets, key: POSTGRES_PASSWORD}
+          securityContext: {allowPrivilegeEscalation: false, readOnlyRootFilesystem: true, capabilities: {drop: ["ALL"]}}
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+          # Readiness checks the database: an instance that can't reach it is
+          # taken out of the Service until it can.
+          readinessProbe:
+            httpGet: {path: /readyz, port: http}
+            periodSeconds: 10
+            timeoutSeconds: 3
+            failureThreshold: 3
+          # Liveness does NOT check the database: a DB outage shouldn't make
+          # Kubernetes restart every API pod (that would only add load).
+          livenessProbe:
+            httpGet: {path: /healthz, port: http}
+            initialDelaySeconds: 10
+            periodSeconds: 20
+            timeoutSeconds: 3
+            failureThreshold: 3
+          # Requests: what the scheduler reserves for the pod.
+          # Memory limit: above it the container is OOMKilled.
+          # No CPU limit on purpose: CPU limits cause throttling even when the
+          # node has spare CPU; the request already guarantees a fair share.
+          resources:
+            requests: {cpu: 100m, memory: 128Mi}
+            limits: {memory: 256Mi}
+      volumes:
+        - name: tmp
+          emptyDir: {}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: api
+  labels:
+    app.kubernetes.io/name: api
+spec:
+  selector:
+    app.kubernetes.io/name: api
+  ports:
+    - name: http
+      port: 80
+      targetPort: http
+---
+# During voluntary disruptions (node drain, cluster upgrade) keep at least
+# one API pod running.
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: uptime-api
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: api

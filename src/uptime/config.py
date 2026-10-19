@@ -8,6 +8,7 @@ import logging
 import os
 from dataclasses import dataclass
 from functools import lru_cache
+from urllib.parse import quote
 
 from sqlalchemy.engine import URL
 
@@ -38,6 +39,21 @@ def _database_url() -> str:
     ).render_as_string(hide_password=False)
 
 
+def _rabbitmq_url() -> str:
+    """Use RABBITMQ_URL if set, otherwise build it from separate parts.
+
+    Same reason as the database URL: in Kubernetes the password comes from
+    a Secret and the host/user from a ConfigMap.
+    """
+    if url := os.getenv("RABBITMQ_URL"):
+        return url
+    user = quote(os.getenv("RABBITMQ_USER", "guest"), safe="")
+    password = quote(os.getenv("RABBITMQ_PASSWORD", "guest"), safe="")
+    host = os.getenv("RABBITMQ_HOST", "localhost")
+    port = os.getenv("RABBITMQ_PORT", "5672")
+    return f"amqp://{user}:{password}@{host}:{port}/"
+
+
 @dataclass(frozen=True)
 class Settings:
     database_url: str
@@ -55,7 +71,7 @@ class Settings:
 def get_settings() -> Settings:
     return Settings(
         database_url=_database_url(),
-        rabbitmq_url=os.getenv("RABBITMQ_URL", "amqp://guest:guest@localhost:5672/"),
+        rabbitmq_url=_rabbitmq_url(),
         check_timeout_seconds=float(os.getenv("CHECK_TIMEOUT_SECONDS", "10")),
         schedule_interval_seconds=int(os.getenv("SCHEDULE_INTERVAL_SECONDS", "60")),
         scheduler_loop=_env_bool("SCHEDULER_LOOP", False),

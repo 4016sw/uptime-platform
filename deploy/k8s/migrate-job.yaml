@@ -1,0 +1,50 @@
+# Runs "alembic upgrade head" once. Migrations are idempotent: re-running
+# when the schema is already current does nothing.
+#
+# Jobs are immutable, so "kubectl apply" can't change an existing Job.
+# ttlSecondsAfterFinished deletes it 10 minutes after it completes; the next
+# apply then creates a fresh one and migrations run again. If you change the
+# image or config within those 10 minutes, delete it first:
+#   kubectl delete job uptime-migrate -n uptime
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: uptime-migrate
+  labels:
+    app.kubernetes.io/name: migrate
+spec:
+  backoffLimit: 4
+  ttlSecondsAfterFinished: 600
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: migrate
+    spec:
+      restartPolicy: Never
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        runAsGroup: 10001
+        seccompProfile: {type: RuntimeDefault}
+      initContainers:
+        - name: wait-for-postgres
+          image: uptime-platform
+          command: ["python", "-m", "uptime.wait_for", "postgres:5432"]
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: {drop: ["ALL"]}
+      containers:
+        - name: migrate
+          image: uptime-platform
+          command: ["alembic", "upgrade", "head"]
+          envFrom:
+            - configMapRef: {name: uptime-config}
+          env:
+            - name: DB_PASSWORD
+              valueFrom:
+                secretKeyRef: {name: uptime-secrets, key: POSTGRES_PASSWORD}
+          securityContext: {allowPrivilegeEscalation: false, readOnlyRootFilesystem: true, capabilities: {drop: ["ALL"]}}
+          resources:
+            requests: {cpu: 50m, memory: 128Mi}
+            limits: {memory: 256Mi}

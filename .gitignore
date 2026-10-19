@@ -1,5 +1,7 @@
 # Secrets
 .env
+deploy/k8s/secrets.env
+deploy/k8s/addons/keda/keda.env
 
 # Python
 __pycache__/

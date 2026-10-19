@@ -1,0 +1,32 @@
+apiVersion: keda.sh/v1alpha1
+kind: TriggerAuthentication
+metadata:
+  name: rabbitmq-auth
+spec:
+  secretTargetRef:
+    - parameter: host
+      name: keda-rabbitmq
+      key: host
+---
+# KEDA watches the queue and manages an HPA for the worker Deployment:
+# target ~5 waiting jobs per worker, between 1 and 10 workers.
+apiVersion: keda.sh/v1alpha1
+kind: ScaledObject
+metadata:
+  name: uptime-worker
+spec:
+  scaleTargetRef:
+    name: uptime-worker
+  minReplicaCount: 1
+  maxReplicaCount: 10
+  pollingInterval: 15   # check the queue every 15s
+  cooldownPeriod: 60    # wait 60s of low load before scaling down
+  triggers:
+    - type: rabbitmq
+      metadata:
+        protocol: amqp
+        queueName: check_jobs
+        mode: QueueLength
+        value: "5"
+      authenticationRef:
+        name: rabbitmq-auth

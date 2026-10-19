@@ -1,0 +1,17 @@
+# Optional: autoscale workers on the length of the check_jobs queue.
+# Requires KEDA installed in the cluster (see deploy/k8s/README.md).
+#   kubectl apply -k deploy/k8s/addons/keda
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: uptime
+
+resources:
+  - scaledobject.yaml
+
+# KEDA needs the full AMQP URL, including the password.
+# Copy keda.env.example to keda.env (gitignored) and fill it in.
+secretGenerator:
+  - name: keda-rabbitmq
+    envs:
+      - keda.env

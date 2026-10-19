@@ -1,0 +1,57 @@
+# The scheduler runs once a minute as a CronJob instead of a long-running
+# loop: Kubernetes owns the schedule, and each run is a short, clean process.
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: uptime-scheduler
+  labels:
+    app.kubernetes.io/name: scheduler
+spec:
+  schedule: "* * * * *"
+  # If a run is still going when the next minute arrives, skip the new one
+  # rather than running two at once (which would double-schedule checks).
+  concurrencyPolicy: Forbid
+  # If a run couldn't start within 30s of its slot (e.g. cluster was busy),
+  # skip it; the next minute's run covers it.
+  startingDeadlineSeconds: 30
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      # Don't retry a failed run: the next scheduled run is under a minute
+      # away, and retries could publish duplicate checks.
+      backoffLimit: 0
+      activeDeadlineSeconds: 50
+      ttlSecondsAfterFinished: 300
+      template:
+        metadata:
+          labels:
+            app.kubernetes.io/name: scheduler
+        spec:
+          restartPolicy: Never
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 10001
+            runAsGroup: 10001
+            seccompProfile: {type: RuntimeDefault}
+          containers:
+            - name: scheduler
+              image: uptime-platform
+              # One-shot mode (SCHEDULER_LOOP is not set).
+              command: ["python", "-m", "uptime.scheduler.main"]
+              envFrom:
+                - configMapRef: {name: uptime-config}
+              env:
+                - name: DB_PASSWORD
+                  valueFrom:
+                    secretKeyRef: {name: uptime-secrets, key: POSTGRES_PASSWORD}
+                - name: RABBITMQ_PASSWORD
+                  valueFrom:
+                    secretKeyRef: {name: uptime-secrets, key: RABBITMQ_PASSWORD}
+              securityContext:
+                allowPrivilegeEscalation: false
+                readOnlyRootFilesystem: true
+                capabilities: {drop: ["ALL"]}
+              resources:
+                requests: {cpu: 25m, memory: 96Mi}
+                limits: {memory: 192Mi}
