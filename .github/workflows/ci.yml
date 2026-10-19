@@ -68,7 +68,7 @@ jobs:
       # Works out image tags and OCI labels (source repo, commit, created date).
       - name: Compute image tags
         id: meta
-        uses: docker/metadata-action@v5
+        uses: docker/metadata-action@v6
         with:
           images: ${{ env.IMAGE_NAME }}
           tags: |
