@@ -9,7 +9,7 @@ Two modes:
 
 import logging
 import signal
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 import pika
 from sqlalchemy import select
@@ -35,7 +35,7 @@ def run_once(channel) -> int:
             select(Monitor.id).where(Monitor.is_active.is_(True))
         ).all()
 
-    scheduled_at = datetime.now(timezone.utc).isoformat()
+    scheduled_at = datetime.now(UTC).isoformat()
     for monitor_id in monitor_ids:
         publish(channel, CHECK_JOBS_QUEUE, {"monitor_id": monitor_id, "scheduled_at": scheduled_at})
 

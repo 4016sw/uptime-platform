@@ -3,7 +3,7 @@
 import html
 import logging
 from collections.abc import Iterator
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from fastapi import Depends, FastAPI, HTTPException, Query, Response, status
 from fastapi.responses import HTMLResponse
@@ -73,7 +73,8 @@ def readiness(session: Session = Depends(get_session)) -> dict:
         session.execute(text("SELECT 1"))
     except SQLAlchemyError:
         log.warning("Readiness check failed: database unreachable")
-        raise HTTPException(status.HTTP_503_SERVICE_UNAVAILABLE, "database unreachable")
+        # "from None": the client gets a clean 503; the DB error stays in our logs.
+        raise HTTPException(status.HTTP_503_SERVICE_UNAVAILABLE, "database unreachable") from None
     return {"status": "ready"}
 
 
@@ -91,7 +92,7 @@ def create_monitor(payload: MonitorCreate, session: Session = Depends(get_sessio
         session.commit()
     except IntegrityError:
         session.rollback()
-        raise HTTPException(status.HTTP_409_CONFLICT, "a monitor for this URL already exists")
+        raise HTTPException(status.HTTP_409_CONFLICT, "a monitor for this URL already exists") from None
     log.info("Created monitor %s for %s", monitor.id, monitor.url)
     return monitor
 
@@ -149,7 +150,7 @@ def status_page(session: Session = Depends(get_session)) -> str:
     for m in monitors:
         colour = _STATUS_COLOURS.get(m.current_status, "#6e7781")
         checked = (
-            m.last_checked_at.astimezone(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
+            m.last_checked_at.astimezone(UTC).strftime("%Y-%m-%d %H:%M:%S UTC")
             if m.last_checked_at
             else "never"
         )

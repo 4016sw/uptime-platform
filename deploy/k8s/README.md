@@ -164,12 +164,34 @@ Within a minute or two KEDA scales the workers up; after the load is gone (delet
 
 ## 8. Updating the code
 
+### Option A: images from the CI pipeline (recommended)
+
+Every push to `main` publishes an image tagged with the commit SHA (see the **Actions** tab, or the repository's **Packages**). Point Kustomize at it in `deploy/k8s/kustomization.yaml`:
+
+```yaml
+images:
+  - name: uptime-platform
+    newName: ghcr.io/4016sw/uptime-platform
+    newTag: a1b2c3d          # the short commit SHA you want to run
+```
+
+```bash
+kubectl apply -k deploy/k8s
+kubectl rollout status deployment/uptime-api -n uptime
+```
+
+Because the tag changes, the pod templates change, and Kubernetes rolls out the new version automatically. **Rolling back** is the same operation with an older SHA.
+
+The first time, make the package public so the cluster can pull it without credentials: GitHub → your profile → **Packages** → `uptime-platform` → **Package settings** → **Change visibility** → Public. (For a private package you'd create an image pull secret instead.)
+
+### Option B: local build (quick experiments)
+
 ```bash
 minikube image build -t uptime-platform:dev .
 kubectl rollout restart deployment -n uptime
 ```
 
-The restart is needed because the tag (`dev`) didn't change, so Kubernetes has no reason to pull or restart anything. Phase 2 fixes this properly with a unique image tag per commit.
+Here the restart is needed because the tag (`dev`) didn't change, so Kubernetes has no reason to restart anything. That ambiguity is exactly why the pipeline uses a unique tag per commit.
 
 ## 9. Clean up
 
@@ -214,4 +236,4 @@ PVCs created by a StatefulSet are kept on purpose when the StatefulSet is delete
 - Single-instance PostgreSQL and RabbitMQ: no replication or failover yet.
 - Worker and alerter have no liveness probe until Phase 4 adds a metrics endpoint.
 - No NetworkPolicies yet (the default minikube network plugin doesn't enforce them).
-- The `dev` image tag requires manual restarts; Phase 2 introduces per-commit tags.
+- Switching image tags is a manual edit of `kustomization.yaml`; Phase 3 (GitOps with Argo CD) automates deployment from Git.

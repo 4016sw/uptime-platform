@@ -1,5 +1,7 @@
 # Uptime Platform
 
+[![CI](https://github.com/4016sw/uptime-platform/actions/workflows/ci.yml/badge.svg)](https://github.com/4016sw/uptime-platform/actions/workflows/ci.yml)
+
 A self-hosted uptime monitoring and alerting platform. Register URLs, the platform checks them every minute, stores the results, and sends a Telegram alert when a site goes down or recovers.
 
 The application is deliberately small. The point of this project is the **platform around it**: containers, Kubernetes, CI/CD, GitOps, observability, infrastructure as code and reliability practices, built up in phases.
@@ -90,6 +92,34 @@ docker compose up -d --scale worker=3
 
 See **[deploy/k8s/README.md](deploy/k8s/README.md)** for running the platform on minikube with StatefulSets, a CronJob scheduler, probes, Ingress and optional KEDA autoscaling.
 
+## CI/CD
+
+Every push and pull request runs the GitHub Actions pipeline in [`.github/workflows/ci.yml`](.github/workflows/ci.yml):
+
+```
+pull request:  lint + tests → build image → vulnerability scan
+push to main:  lint + tests → build image → vulnerability scan → push to GHCR
+```
+
+| Step | Tool | Fails the pipeline when |
+|---|---|---|
+| Lint | ruff | Code has errors (unused imports, undefined names, syntax problems) |
+| Unit tests | pytest | Any test fails |
+| Build | Docker Buildx, with layer caching | The image doesn't build |
+| Vulnerability scan | Trivy | The image has a **CRITICAL** vulnerability with a fix available (HIGH ones are reported) |
+| Publish (main only) | GitHub Container Registry | — |
+
+Published images are tagged with the **short commit SHA**, e.g. `ghcr.io/4016sw/uptime-platform:a1b2c3d`, plus `main` for the latest build of the main branch. Deployments use the SHA tag, so every running version maps to an exact commit and rolling back means deploying an older SHA.
+
+**Design choices**
+
+- **Tests gate the build:** the image job only runs if lint and tests pass.
+- **Scan before publish:** the image is built locally in the runner, scanned, and only then pushed, so a vulnerable image never reaches the registry.
+- **No stored credentials:** pushing uses the short-lived `GITHUB_TOKEN` that GitHub creates for each run, with `packages: write` granted only to the image job.
+- **Pull requests never publish:** they get the full checks without the push step.
+- **Superseded runs are cancelled:** a new push to the same branch cancels the older run.
+- **Dependabot** opens weekly pull requests for Python packages, GitHub Actions and the base image; each one goes through the pipeline before merging.
+
 ## Tests
 
 ```bash
@@ -125,7 +155,7 @@ pytest
 |---|---|---|
 | 0 | Application + Docker Compose | ✅ |
 | 1 | Kubernetes: Deployments, StatefulSets for PostgreSQL/RabbitMQ, CronJob, probes, resource limits, Ingress, KEDA autoscaling ([guide](deploy/k8s/README.md)) | ✅ |
-| 2 | CI/CD with GitHub Actions: tests, image build, Trivy scan, SHA-tagged images | ⏳ |
+| 2 | CI/CD with GitHub Actions: tests, image build, Trivy scan, SHA-tagged images on GHCR, Dependabot | ✅ |
 | 3 | Helm chart + GitOps with Argo CD | ⏳ |
 | 4 | Observability: Prometheus metrics, Grafana dashboards, Alertmanager, SLOs | ⏳ |
 | 5 | AWS with Terraform: modules, S3 remote state, EKS, RDS, GitHub OIDC | ⏳ |

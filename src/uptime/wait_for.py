@@ -22,7 +22,7 @@ def wait_for(host: str, port: int, timeout_seconds: float = 300, interval_second
                 return
         except OSError as exc:
             if time.monotonic() >= deadline:
-                raise SystemExit(f"Gave up waiting for {host}:{port}: {exc!r}")
+                raise SystemExit(f"Gave up waiting for {host}:{port}: {exc!r}") from exc
             print(f"Waiting for {host}:{port} ({exc.__class__.__name__})", flush=True)
             time.sleep(interval_seconds)
 

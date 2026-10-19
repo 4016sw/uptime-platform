@@ -8,7 +8,7 @@ replicas automatically based on the length of the check_jobs queue.
 import json
 import logging
 import signal
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from uptime.config import configure_logging, get_settings
 from uptime.db import SessionLocal
@@ -47,7 +47,7 @@ def process(monitor_id: int, timeout_seconds: float) -> dict | None:
         url, expected_status, name = monitor.url, monitor.expected_status, monitor.name
 
     outcome = check_url(url, expected_status, timeout_seconds)
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     current = "up" if outcome.is_up else "down"
 
     with SessionLocal.begin() as session:
