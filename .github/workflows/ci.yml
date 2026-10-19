@@ -78,7 +78,7 @@ jobs:
 
       # 1) Build locally first so the image can be scanned before anything is published.
       - name: Build image (for scanning)
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@v7
         with:
           context: .
           load: true
@@ -118,7 +118,7 @@ jobs:
       # 4) Push the scanned image. Layers come from the cache, so this is fast.
       - name: Push image
         if: github.event_name != 'pull_request'
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@v7
         with:
           context: .
           push: true
