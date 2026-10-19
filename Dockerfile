@@ -1,6 +1,6 @@
 # One image for all four roles (api, scheduler, worker, alerter).
 # Each container picks its role through the command it runs.
-FROM python:3.12-slim
+FROM python:3.14-slim
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
